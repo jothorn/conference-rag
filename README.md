@@ -10,6 +10,8 @@ A Retrieval Augmented Generation (RAG) application that lets users ask questions
 
 ## 🚀 Quick Start
 
+For a guided source-reading order, start with the [Code Tour](CODE_TOUR.md).
+
 Follow the step-by-step guides in the `steps/` folder:
 
 ```
