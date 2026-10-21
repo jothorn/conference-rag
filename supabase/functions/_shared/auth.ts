@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 export async function authenticatedUserId(request: Request): Promise<string | null> {
+  // Verify the bearer token with Supabase Auth; never trust a user ID decoded from the token alone.
   const authorization = request.headers.get('Authorization') ?? '';
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
