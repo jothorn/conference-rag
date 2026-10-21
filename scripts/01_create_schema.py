@@ -44,6 +44,7 @@ def create_schema():
     if not MIGRATION.is_file():
         raise FileNotFoundError(f'Migration not found: {MIGRATION}')
     public_config, secrets = load_config()
+    # Read the checked-in migration so the Python setup script has one schema source of truth.
     schema_sql = MIGRATION.read_text(encoding='utf-8')
 
     print('=' * 60)
@@ -55,6 +56,7 @@ def create_schema():
         'Authorization': f"Bearer {secrets['SUPABASE_ACCESS_TOKEN']}",
         'Content-Type': 'application/json',
     }
+    # The Management API applies DDL; the client library below checks that the API can see it.
     response = requests.post(url, headers=headers, json={'query': schema_sql}, timeout=60)
     if response.status_code not in (200, 201):
         print(f'❌ Schema migration failed: HTTP {response.status_code}')
