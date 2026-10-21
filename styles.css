@@ -458,6 +458,43 @@ input:focus {
     padding: var(--spacing-lg) 0;
 }
 
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: var(--surface);
+    border: 1px solid var(--surface-light);
+    border-radius: var(--radius-lg);
+}
+
+.filter-bar label {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.filter-bar select {
+    min-width: min(22rem, 100%);
+    flex: 1;
+    padding: var(--spacing-sm);
+    background: var(--background);
+    border: 2px solid var(--surface-light);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font: inherit;
+}
+
+.filter-bar select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.filter-status {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
 .search-panel {
     background: var(--surface);
     border-radius: var(--radius-lg);
@@ -553,6 +590,10 @@ input:focus {
 .result-card.rag-answer {
     border-color: var(--secondary);
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, var(--background) 100%);
+}
+
+.rag-answer .result-sentences {
+    white-space: pre-line;
 }
 
 .result-card.result-source {
@@ -760,5 +801,19 @@ input:focus {
 
     .panel-input {
         flex-direction: column;
+    }
+
+    .filter-bar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .filter-bar select {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .filter-status {
+        white-space: normal;
     }
 }

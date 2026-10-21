@@ -72,6 +72,10 @@ Your AI assistant will automatically read [`ai_agent_instructions.md`](ai_agent_
 | **🧠 Semantic Search** | Vector similarity with pgvector | Embeddings + `embed-question` Edge Function |
 | **🤖 Ask a Question (RAG)** | AI-generated answers with sources | All Edge Functions deployed |
 
+All three search modes share a **speaker filter**. Keyword search adds a
+speaker condition to its query; semantic and RAG search pass the filter to
+`match_sentences()` so other speakers never enter the retrieval context.
+
 ## 📁 Project Structure
 
 ```
@@ -80,11 +84,15 @@ conference-rag/
 ├── app.js                      # Three search modes + auth logic
 ├── styles.css                  # Dark theme styling
 ├── config.js                   # Loads config.public.json for browser
-├── config.public.json          # Supabase URL + anon key (safe to commit)
+├── config.public.json          # Supabase URL + publishable key (safe to commit)
 ├── config.secret.json          # API keys & secrets (git-ignored, YOU create this)
 ├── config.secret.example.json  # Template for config.secret.json
 ├── requirements.txt            # Python dependencies
 ├── .nojekyll                   # Tells GitHub Pages not to use Jekyll
+├── supabase/
+│   ├── config.toml              # Manual JWT verification for Edge Functions
+│   ├── migrations/              # RLS, pgvector, indexes, and search RPCs
+│   └── functions/               # Authenticated OpenAI proxy functions
 ├── steps/                      # Step-by-step assignment guides
 │   ├── 00_overview.md
 │   ├── ...
@@ -96,18 +104,27 @@ conference-rag/
 │   ├── 04_embed_data.py        # Generate embeddings → scripts/output/ (💰 saved to disk!)
 │   ├── 05_update_embeddings.py # Update DB with embeddings (🧠 semantic!)
 │   └── output/                 # Intermediate data files (git-ignored)
-└── supabase/                   # Edge Functions (YOU create this with supabase init)
-    └── functions/
-        ├── _shared/            # Shared auth & CORS helpers
-        ├── embed-question/     # Converts questions to embeddings
-        └── generate-answer/    # Generates AI answers
+└── SUBMISSION.md               # Feature write-up and reflection draft
 ```
+
+## 🛠️ Build and deploy
+
+The schema source of truth is
+`supabase/migrations/20261021220000_initial_schema.sql`. After creating a
+Supabase project and filling in the two config files, run the Python scripts in
+order. Embeddings cost money; the overview estimates about $0.60 for the
+complete dataset. The text import will not erase existing rows unless you
+explicitly pass `--replace` and confirm.
+
+Deploy the Edge Functions with the Supabase CLI after setting `OPENAI_API_KEY`
+as a Supabase secret. The functions validate the user's Supabase JWT, enforce
+input limits, and keep the OpenAI credential on the server.
 
 ## 🔒 Security Model
 
 | Component | Security Approach |
 |-----------|------------------|
-| Supabase anon key | Safe to expose in `config.public.json` (protected by RLS) |
+| Supabase publishable key | Safe to expose in `config.public.json` (protected by RLS) |
 | OpenAI API key | Server-side only via Edge Functions (in `config.secret.json`) |
 | Database access | Row Level Security policies |
 | Transport | HTTPS enforced by GitHub Pages |
@@ -133,7 +150,7 @@ conference-rag/
 
 | Issue | Solution |
 |-------|----------|
-| "Please configure Supabase" | Update `config.public.json` with your project URL and anon key |
+| "Please configure Supabase" | Update `config.public.json` with your project URL and publishable key |
 | Magic link not working | Add your site URL to Supabase → Authentication → URL Configuration |
 | Magic link email not arriving | Free tier allows only **3 per hour** — wait and try again, check spam |
 | Changes don't appear | Hard refresh (Ctrl+Shift+R) or try incognito window |

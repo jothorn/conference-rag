@@ -69,6 +69,10 @@ Now import the scraped data into your database:
 python scripts/03_import_data.py
 ```
 
+If the table already contains data, the script stops without changing it. To
+replace the existing dataset, run `python scripts/03_import_data.py --replace`
+and type `REPLACE` when prompted.
+
 This script:
 1. Reads `scripts/output/talks.json`
 2. Splits ~400 talks into ~80,000 sentences

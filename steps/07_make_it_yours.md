@@ -32,6 +32,21 @@ Congratulations! You built a production-ready RAG application from scratch.
 
 Be creative! Have fun! This is your chance to show you understand the system well enough to extend it.
 
+### Implemented Feature: Filter by Speaker
+
+This version adds one speaker dropdown that applies to **keyword search,
+semantic search, and RAG**. Keyword search adds an exact speaker condition to
+its PostgREST query. Semantic and RAG pass the selected speaker into
+`match_sentences()`, which filters vector candidates before returning
+results. RAG then builds its answer context only from talks by that speaker.
+
+The dropdown values come from the authenticated `list_speakers()` database
+function. Both SQL functions run as the caller and rely on the table's RLS
+policy; the browser never receives the service-role key.
+
+See [`SUBMISSION.md`](../SUBMISSION.md) for the feature write-up and reflection
+draft.
+
 ## 📝 Reflection Questions
 
 Answer these in your submission. Use your AI assistant to discuss these — it can prompt you with follow-up questions to deepen your understanding.
@@ -39,7 +54,7 @@ Answer these in your submission. Use your AI assistant to discuss these — it c
 ### 1. Security Architecture ⭐⭐⭐⭐⭐
 
 Draw or describe a diagram showing what protects each sensitive asset in this application. Your answer should address:
-- Why is the anon key safe to expose in `config.public.json`?
+- Why is the publishable key safe to expose in `config.public.json`?
 - What would happen if someone got the service role key?
 - How do Edge Functions protect the OpenAI API key?
 - What role does Row Level Security play?

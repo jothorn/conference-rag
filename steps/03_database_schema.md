@@ -15,7 +15,7 @@
 
 ## Why This Matters
 
-Your database is the foundation for all three search modes. The schema you create here includes the `sentence_embeddings` table (where all your conference talk data will live) and the `match_sentences()` function (which powers semantic search later). Getting this right means everything else builds on a solid base.
+Your database is the foundation for all three search modes. The checked-in migration creates the `sentence_embeddings` table, RLS policies, keyword and vector indexes, and the `match_sentences()` and `list_speakers()` functions. The same migration is used by the setup script, so the documented schema and app stay in sync.
 
 ## What to Do
 
@@ -31,6 +31,8 @@ This script creates:
 - **`page_views` table** — Records every page visit (🌍 **public**)
 - **RLS policies** — Controls who can access each table
 - **`match_sentences()` function** — A stored procedure for vector similarity search
+- **`list_speakers()` function** — Supplies values for the shared speaker filter
+- **Indexes** — Trigram keyword search and HNSW cosine similarity
 
 > 💡 **Ask your AI assistant**: *"What is pgvector and how does cosine similarity search work?"*
 
@@ -63,9 +65,9 @@ USING (true);
 
 ### 🧪 Hands-On: See RLS in Action
 
-After the script completes, try this experiment. Ask your AI assistant to help you write a quick Python snippet that uses **just the anon key** (not the service key) to:
+After the script completes, try this experiment. Ask your AI assistant to help you write a quick Python snippet that uses **just the publishable key** (not the service key) to:
 
-1. **Query `page_views`** → ✅ Should work! The anon key can read this table.
+1. **Query `page_views`** → ✅ Should work! The publishable key can read this table.
 2. **Query `sentence_embeddings`** → ❌ Should return **zero rows**! RLS blocks unauthenticated access.
 
 Here's a starting point:
@@ -78,7 +80,7 @@ with open('config.public.json') as f:
     public = json.load(f)
 
 # Connect with the ANON key (not service key!)
-client = create_client(public['SUPABASE_URL'], public['SUPABASE_ANON_KEY'])
+client = create_client(public['SUPABASE_URL'], public['SUPABASE_PUBLISHABLE_KEY'])
 
 # This works — page_views has a public SELECT policy
 result = client.table('page_views').select('*').limit(5).execute()
@@ -91,7 +93,7 @@ print(f"sentence_embeddings: {len(result.data)} rows (expected: 0) 🔒")
 
 > 💡 **Try it!** Seeing the output first-hand makes the RLS concept click.
 
-> 🤔 **Think about it**: The anon key is in your `config.public.json`. Anyone can see it. So why is your data still safe?
+> 🤔 **Think about it**: The publishable key is in your `config.public.json`. Anyone can see it. So why is your data still safe?
 
 ### The Security Model
 
@@ -99,7 +101,7 @@ print(f"sentence_embeddings: {len(result.data)} rows (expected: 0) 🔒")
 ┌────────────────────────────────────────┐
 │ Supabase-Managed Security              │
 │                                        │
-│  anon key → RLS decides what you see   │
+│  publishable key → RLS decides access  │
 │  ┌─────────────────┐  ┌────────────┐  │
 │  │ page_views      │  │ embeddings │  │
 │  │ 🌍 public read  │  │ 🔒 auth    │  │
@@ -126,8 +128,8 @@ print(f"sentence_embeddings: {len(result.data)} rows (expected: 0) 🔒")
 
 ## Verification
 
-- [ ] Script prints "✅ Database schema created successfully!"
-- [ ] Script prints "✅ Table verified" with a row count
+- [ ] Script prints "✅ Schema verified" with the current row count
+- [ ] The speaker filter function responds with a speaker count
 - [ ] You can see both `sentence_embeddings` and `page_views` in Supabase Dashboard → Table Editor
 - [ ] (Optional) The RLS test snippet shows `page_views` is readable but `sentence_embeddings` returns 0 rows
 

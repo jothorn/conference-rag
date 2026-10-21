@@ -78,16 +78,16 @@ These are the core concepts students should understand by the end. When opportun
 ### 5. Row Level Security (RLS)
 - **What**: Database-level access control policies that filter data per-user
 - **Why it matters**: Security that can't be bypassed by application bugs — the database itself enforces the rules
-- **Key insight**: The `page_views` table is readable by anyone (public policy), but `sentence_embeddings` requires authentication — same database, same anon key, different policies
-- **Teach them**: Run the Step 03 RLS contrast test (query both tables with the anon key), explain the difference between `TO anon` and `TO authenticated` policies, why database-level security is more robust than app-level checks
+- **Key insight**: The `page_views` table is readable by anyone (public policy), but `sentence_embeddings` requires authentication — same database, same publishable key, different policies
+- **Teach them**: Run the Step 03 RLS contrast test (query both tables with the publishable key), explain the difference between `TO anon` and `TO authenticated` policies, why database-level security is more robust than app-level checks
 
 ### 6. Authentication & Security Architecture
 - **What**: A layered security model combining Supabase-managed auth (magic links, JWTs, RLS) with self-built security (Edge Functions)
 - **Why it matters**: Real applications always have multiple security layers — understanding which layer protects what is fundamental
 - **Key insight**: There are two distinct security layers students must understand:
-  1. **Supabase-managed**: The anon key + RLS policies protect your database. Supabase handles this for you.
+  1. **Supabase-managed**: The publishable key (formerly anon key) + RLS policies protect your database. Supabase handles this for you.
   2. **Self-built**: Supabase can't protect your OpenAI key — you build Edge Functions as the secure intermediary.
-- **Teach them**: How magic links work, JWT tokens, why the anon key is safe to expose, why the service_role key is dangerous, how Edge Functions verify auth before calling OpenAI
+- **Teach them**: How magic links work, JWT tokens, why the publishable key is safe to expose, why the service_role key is dangerous, how Edge Functions verify auth before calling OpenAI
 ### 7. Production Deployment
 - **What**: Taking code from development to a live, publicly-accessible application
 - **Why it matters**: Building something real that others can use is deeply satisfying and professionally valuable
@@ -100,7 +100,7 @@ These are the core concepts students should understand by the end. When opportun
 conference-rag/
 ├── index.html, app.js, styles.css   # Frontend (static site)
 ├── config.js                         # Loads config.public.json for browser
-├── config.public.json                # Supabase URL + anon key (safe to commit)
+├── config.public.json                # Supabase URL + publishable key (safe to commit)
 ├── config.secret.json                # API keys & service keys (git-ignored)
 ├── steps/                            # Step-by-step assignment guides (00-07)
 ├── scripts/                          # Pipeline scripts (run in order)
@@ -122,10 +122,10 @@ The project splits configuration into two files:
 
 | File | Contains | Committed? | Used By |
 |------|---------|:-:|-----|
-| `config.public.json` | Supabase URL + anon key | ✅ Yes | Browser (via `config.js`) + scripts |
+| `config.public.json` | Supabase URL + publishable key | ✅ Yes | Browser (via `config.js`) + scripts |
 | `config.secret.json` | OpenAI API key, Supabase service key, access token, project ref | ❌ Git-ignored | Scripts only (server-side) |
 
-The anon key is safe to commit because Row Level Security controls what it can access. The service key bypasses all RLS — it must never be exposed.
+The publishable key is safe to commit because Row Level Security controls what it can access. The service key bypasses all RLS — it must never be exposed.
 
 ## Data Pipeline
 
@@ -185,7 +185,7 @@ When students ask these, here's the depth of understanding to aim for:
 | "What is an embedding?" | Analogy (e.g., GPS coordinates for meaning), dimensions, similarity |
 | "Why not just use keyword search?" | Vocabulary mismatch problem, synonyms, intent vs. words |
 | "Why do we need Edge Functions?" | API key security, server-side vs. client-side, cost of exposure |
-| "What is RLS?" | Defense in depth, anon key exposure safety, policy as SQL |
+| "What is RLS?" | Defense in depth, publishable key exposure safety, policy as SQL |
 | "Why split into sentences?" | Chunking tradeoffs, precision vs. recall, aggregation by talk_id |
 | "How does RAG prevent hallucination?" | Grounding in retrieved text, but noting it doesn't eliminate hallucination entirely |
 | "Why not fine-tune instead?" | Cost, updatability, transparency, source attribution |

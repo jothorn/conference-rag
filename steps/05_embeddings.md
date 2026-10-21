@@ -7,141 +7,70 @@
 ```
 
 ## What You'll Learn
-- What vector embeddings are and how they represent meaning
-- Why we split text into sentences (chunking strategy)
-- How OpenAI's embedding API works
-- What Edge Functions are and why we need them
-- How to deploy serverless functions with the Supabase CLI
 
-## Why This Matters
+- How embeddings represent text as vectors
+- Why this project uses sentence-level chunks
+- How pgvector ranks semantic matches
+- Why an Edge Function keeps API keys out of browser code
 
-Keyword search is powerful, but it only finds exact matches. Try searching for *"How can I find peace during hard times?"* with keyword search — you probably won't get great results. Semantic search solves this by understanding **meaning**, not just words. After this step, that same question will find talks about comfort, hope, and overcoming trials.
-
-> 💪 **This is the biggest step in the assignment** — embedding generation, database updates, CLI setup, and edge function creation. Grab a snack while embeddings generate (~15 min). You've got this!
-
-## What to Do
-
-### Step 5a: Generate Embeddings
-
-Run the embedding script to generate vector representations and save them to disk:
+## Step 5a: Generate embeddings
 
 ```bash
 python scripts/04_embed_data.py
 ```
 
-This script:
-1. Reads `scripts/output/sentences.json`
-2. Calls OpenAI's `text-embedding-3-small` to generate a 1,536-dimensional vector for each sentence
-3. Saves results to `scripts/output/sentences_with_embeddings.json`
-4. Supports resuming if interrupted (your progress is saved!)
+The script reads `scripts/output/sentences.json`, calls OpenAI's
+`text-embedding-3-small` model, and saves vectors to
+`scripts/output/sentences_with_embeddings.json`. It checkpoints results and
+resumes by sentence ID after a failed batch. The assignment estimates about
+$0.60 in API usage for the full dataset. It will not run until a real
+`OPENAI_API_KEY` is in your git-ignored `config.secret.json`.
 
-> ⏱️ **This takes 10-15 minutes** and costs ~$0.60 in OpenAI API usage.
-> 💰 **Your embeddings are safe**: They're saved to disk in `scripts/output/`, so even if the next step fails, you won't pay twice.
-
-### Step 5b: Update Database with Embeddings
+## Step 5b: Import the embeddings
 
 ```bash
 python scripts/05_update_embeddings.py
 ```
 
-This reads the saved embeddings and updates each row in the database.
+This upserts rows by `(talk_id, sentence_num)` in small batches, so rerunning
+it is safe after an interrupted import.
 
-### How Embeddings Work
+## Step 5c: Deploy `embed-question`
 
-```
-"Faith is the assurance of things hoped for"
-    ↓ OpenAI text-embedding-3-small
-[0.012, -0.034, 0.089, ... 1,536 dimensions]
-```
+The function source is included at `supabase/functions/embed-question/`. It
+validates the signed-in user's JWT, sends the question to OpenAI from the
+server, and returns the 1,536-dimensional embedding. The OpenAI key never goes
+to the browser.
 
-Similar sentences produce similar vectors. This is what enables semantic search — finding content by **meaning** rather than exact keywords.
-
-> 💡 **Ask your AI assistant**: *"What are the trade-offs between different chunking strategies in RAG systems? Why did we choose sentence-level chunking?"*
-
-### Step 5c: Create & Deploy the embed-question Edge Function
-
-Your app needs to call OpenAI's API to embed user questions, but you can't put your API key in client-side JavaScript (anyone could steal it). Edge Functions solve this:
-
-```
-❌ Bad:  Browser → OpenAI API (API key exposed in browser!)
-✅ Good: Browser → Edge Function → OpenAI API (API key stays on server)
-```
-
-**You'll create an Edge Function called `embed-question`** that:
-- Receives a question from the browser
-- Calls OpenAI to generate an embedding vector
-- Returns the embedding to the browser
-
-#### 1. Install the Supabase CLI
-
-> 💡 **Ask your AI assistant**: *"How do I install the Supabase CLI on my operating system?"*
-
-Common installation methods:
-- **npm**: `npm install -g supabase`
-- **Homebrew (macOS)**: `brew install supabase/tap/supabase`
-- **Scoop (Windows)**: `scoop bucket add supabase https://github.com/supabase/scoop-bucket.git` then `scoop install supabase`
-
-Verify: `supabase --version`
-
-#### 2. Initialize Supabase & Link to Your Project
+Install the [Supabase CLI](https://supabase.com/docs/guides/cli), then log in
+and link this local folder to the project reference in `config.secret.json`:
 
 ```bash
-supabase init
+supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 ```
 
-Replace `YOUR_PROJECT_REF` with the value from your `config.secret.json`.
-
-#### 3. Set Your OpenAI Key as a Secret
-
-```bash
-supabase secrets set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
-```
-
-#### 4. Create the embed-question Function
-
-Ask your AI assistant to help you create the Edge Function:
-
-> 🤖 **Tell your AI assistant**: *"I need to create a Supabase Edge Function called `embed-question`. It should:*
-> - *Accept a POST request with `{ "question": "..." }` in the body*
-> - *Use the OpenAI API to generate an embedding with `text-embedding-3-small`*
-> - *Return `{ "embedding": [...] }` in the response*
-> - *Handle CORS for cross-origin requests from GitHub Pages*
-> - *Verify the user is authenticated before processing"*
-
-The function lives at: `supabase/functions/embed-question/index.ts`
-
-You'll also need a shared CORS helper at: `supabase/functions/_shared/cors.ts`
-
-> 💡 **Need a reference?** You can see a working implementation at [github.com/michaeltreynolds/cragger](https://github.com/michaeltreynolds/cragger/tree/main/supabase/functions)
-
-> ⚠️ **Auth note**: Supabase is currently transitioning its JWT verification approach. Deploy with `--no-verify-jwt` and handle authentication manually inside your function using the `Authorization` header. See the cragger repo's `_shared/auth.ts` for this pattern.
-
-#### 5. Deploy the Function
+Copy the ignored env-file template, put the OpenAI key in it, and upload the
+secrets. This keeps the key out of command history and Git:
 
 ```bash
-supabase functions deploy embed-question --no-verify-jwt
+cp supabase/functions/.env.example supabase/functions/.env
+# Edit supabase/functions/.env and set OPENAI_API_KEY
+supabase secrets set --env-file supabase/functions/.env
 ```
 
-### 3. See Your Second Green Light! 🟢
+The project config disables gateway JWT verification because the function
+validates the token itself with Supabase Auth. Deploy it with:
 
-After deploying the embed-question function:
-
-1. **Refresh your site** (hard refresh: Ctrl+Shift+R)
-2. The **🧠 Semantic Search** panel should now show **🟢 Ready**!
-
-Try searching for *"How can I find peace during hard times?"* — notice how it finds relevant talks even without those exact keywords!
+```bash
+supabase functions deploy embed-question
+```
 
 ## Verification
 
-- [ ] `04_embed_data.py` completes and reports embeddings generated
-- [ ] `scripts/output/sentences_with_embeddings.json` exists (your safety net!)
-- [ ] `05_update_embeddings.py` completes and reports rows updated
-- [ ] `supabase --version` shows a version number
-- [ ] `embed-question` function deployed without errors
-- [ ] You can see the function in Supabase Dashboard → Edge Functions
-- [ ] On your site: **🧠 Semantic Search** turns green and returns results!
-
-## 🎉 Milestone: Second green light! Semantic Search works!
+- [ ] `04_embed_data.py` completes and saves the embedding file
+- [ ] `05_update_embeddings.py` reports the database row counts
+- [ ] `embed-question` is deployed
+- [ ] Semantic Search turns green and returns meaning-based results
 
 ## → Next: [Step 06: RAG — All Lights Green](06_rag.md)

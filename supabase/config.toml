@@ -1,0 +1,6 @@
+# Edge Functions verify the Supabase user JWT in the shared auth helper.
+[functions.embed-question]
+verify_jwt = false
+
+[functions.generate-answer]
+verify_jwt = false

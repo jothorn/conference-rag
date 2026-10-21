@@ -9,7 +9,7 @@
 ## What You'll Learn
 - What Supabase is and why we use it (Postgres + Auth + Edge Functions as a service)
 - How API keys and access tokens work
-- The difference between `anon` (public) and `service_role` (admin) keys
+- The difference between a publishable key and a secret/service-role key
 - How magic link authentication works
 
 ## Why This Matters
@@ -37,7 +37,7 @@ You need values for **two config files**. Here's where to find each one:
 | Credential | Where to Find It |
 |-----------|-----------------|
 | `SUPABASE_URL` | Settings → API → Project URL |
-| `SUPABASE_ANON_KEY` | Settings → API → `anon` `public` key |
+| `SUPABASE_PUBLISHABLE_KEY` | Settings → API Keys → default publishable key (recommended). The legacy `anon` key also works. |
 
 #### config.secret.json (never commit!)
 
@@ -54,7 +54,7 @@ You need values for **two config files**. Here's where to find each one:
 ```json
 {
     "SUPABASE_URL": "https://xyzabc123.supabase.co",
-    "SUPABASE_ANON_KEY": "eyJ..."
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_..."
 }
 ```
 
@@ -68,7 +68,7 @@ You need values for **two config files**. Here's where to find each one:
 }
 ```
 
-> 💡 **Ask your AI assistant**: *"What is the difference between the Supabase anon key and the service role key? Why is one safe to put in client-side code?"*
+> 💡 **Ask your AI assistant**: *"What does a Supabase publishable key allow, and how do RLS policies limit its access?"*
 
 ### 4. Push & Configure Auth
 
@@ -106,7 +106,7 @@ Then configure the magic link redirect:
 ## Verification
 
 - [ ] Supabase project is created and accessible at your dashboard
-- [ ] `config.public.json` has your URL and anon key
+- [ ] `config.public.json` has your URL and publishable key
 - [ ] `config.secret.json` has all four secret values filled in
 - [ ] Magic link login works on your deployed site
 - [ ] You see three search panels with red "Not Ready" indicators

@@ -12,11 +12,10 @@ function isConfigValid() {
         SUPABASE_CONFIG.url === 'https://your-project-ref.supabase.co' ||
         SUPABASE_CONFIG.url === 'https://YOUR_PROJECT_REF.supabase.co';
 
-    const isPlaceholderKey = !SUPABASE_CONFIG.anonKey ||
-        SUPABASE_CONFIG.anonKey.includes('YOUR_SUPABASE') ||
-        SUPABASE_CONFIG.anonKey.includes('your-anon-key') ||
-        SUPABASE_CONFIG.anonKey === 'YOUR_SUPABASE_ANON_KEY_HERE' ||
-        SUPABASE_CONFIG.anonKey.length < 20;
+    const isPlaceholderKey = !SUPABASE_CONFIG.apiKey ||
+        SUPABASE_CONFIG.apiKey.includes('YOUR_') ||
+        SUPABASE_CONFIG.apiKey.includes('your-anon-key') ||
+        SUPABASE_CONFIG.apiKey.length < 20;
 
     return !isPlaceholderUrl && !isPlaceholderKey;
 }
@@ -32,7 +31,7 @@ function initializeSupabase() {
         try {
             supabaseClient = window.supabase.createClient(
                 SUPABASE_CONFIG.url,
-                SUPABASE_CONFIG.anonKey
+                SUPABASE_CONFIG.apiKey
             );
             // Listen for auth state changes
             supabaseClient.auth.onAuthStateChange((event, session) => {
@@ -83,6 +82,9 @@ const ragInput = document.getElementById('rag-input');
 const ragBtn = document.getElementById('rag-btn');
 const ragResults = document.getElementById('rag-results');
 const ragStatus = document.getElementById('rag-status');
+const speakerFilter = document.getElementById('speaker-filter');
+const speakerFilterStatus = document.getElementById('speaker-filter-status');
+let speakerOptionsLoaded = false;
 
 // ============================================
 // SETUP BANNER DETECTION
@@ -325,6 +327,12 @@ async function checkSearchReadiness() {
 
         const hasData = !totalError && totalCount > 0;
         setSearchReady('keyword', hasData);
+        if (hasData) {
+            await loadSpeakerOptions();
+        } else if (speakerFilterStatus) {
+            speakerFilterStatus.textContent = 'Import talk data to filter by speaker';
+            if (speakerFilter) speakerFilter.disabled = true;
+        }
 
         // --- Check 2: Data with embeddings? (semantic search needs vectors) ---
         let hasEmbeddings = false;
@@ -341,9 +349,9 @@ async function checkSearchReadiness() {
         if (hasEmbeddings) {
             try {
                 const { data, error: fnError } = await supabaseClient.functions.invoke('embed-question', {
-                    body: { question: 'test' }
+                    body: { health_check: true }
                 });
-                semanticReady = !fnError;
+                semanticReady = !fnError && data?.healthy === true;
             } catch {
                 // CORS or network error → function not deployed
             }
@@ -356,9 +364,9 @@ async function checkSearchReadiness() {
         } else {
             try {
                 const { data, error: fnError } = await supabaseClient.functions.invoke('generate-answer', {
-                    body: { question: 'test', context_talks: [] }
+                    body: { health_check: true }
                 });
-                setSearchReady('rag', !fnError || fnError.context?.status !== 404);
+                setSearchReady('rag', !fnError && data?.healthy === true);
             } catch {
                 setSearchReady('rag', false);
             }
@@ -371,6 +379,40 @@ async function checkSearchReadiness() {
     } finally {
         readinessCheckRunning = false;
     }
+}
+
+async function loadSpeakerOptions() {
+    if (!supabaseClient || !speakerFilter || speakerOptionsLoaded) return;
+
+    const { data, error } = await supabaseClient.rpc('list_speakers');
+    if (error) {
+        if (speakerFilterStatus) speakerFilterStatus.textContent = 'Speaker filter unavailable';
+        speakerFilter.disabled = false;
+        return;
+    }
+
+    const selectedSpeaker = speakerFilter.value;
+    const speakers = [...new Set((data || [])
+        .map((row) => row.speaker)
+        .filter((name) => typeof name === 'string' && name.trim()))]
+        .sort((a, b) => a.localeCompare(b));
+
+    speakerFilter.replaceChildren(new Option('All speakers', ''));
+    for (const speaker of speakers) {
+        speakerFilter.add(new Option(speaker, speaker));
+    }
+    if (speakers.includes(selectedSpeaker)) speakerFilter.value = selectedSpeaker;
+    speakerFilter.disabled = false;
+    speakerOptionsLoaded = true;
+    if (speakerFilterStatus) {
+        speakerFilterStatus.textContent = speakers.length
+            ? `${speakers.length} speakers available`
+            : 'No speakers found';
+    }
+}
+
+function getSelectedSpeaker() {
+    return speakerFilter?.value || null;
 }
 
 function setSearchReady(type, ready) {
@@ -416,11 +458,14 @@ async function keywordSearch() {
 
     try {
         // Search sentence_embeddings that contain the keyword (case-insensitive)
-        const { data, error } = await supabaseClient
+        let request = supabaseClient
             .from('sentence_embeddings')
             .select('text, talk_id, title, speaker, url')
             .ilike('text', `%${query}%`)
             .limit(20);
+        const selectedSpeaker = getSelectedSpeaker();
+        if (selectedSpeaker) request = request.eq('speaker', selectedSpeaker);
+        const { data, error } = await request;
 
         if (error) throw new Error(`Search failed: ${error.message}`);
 
@@ -447,7 +492,7 @@ async function keywordSearch() {
         let html = '';
         for (const talk of Object.values(talks)) {
             html += `<div class="result-card">
-                <div class="result-title"><a href="${escapeHtml(talk.url)}" target="_blank" class="result-title-link">${escapeHtml(talk.title)}</a></div>
+                <div class="result-title"><a href="${safeHref(talk.url)}" target="_blank" rel="noopener noreferrer" class="result-title-link">${escapeHtml(talk.title)}</a></div>
                 <div class="result-speaker">by ${escapeHtml(talk.speaker)}</div>
                 <div class="result-sentences">${talk.sentences.slice(0, 3).join('<br>')}</div>
             </div>`;
@@ -483,7 +528,7 @@ async function semanticSearch() {
         const embedding = await getEmbedding(query);
 
         // Step 2: Search for similar sentences
-        const results = await searchSentences(embedding);
+        const results = await searchSentences(embedding, getSelectedSpeaker());
 
         if (!results || results.length === 0) {
             showResults('semantic', '<div class="no-results">No similar content found. Try a different query.</div>');
@@ -498,7 +543,7 @@ async function semanticSearch() {
             html += `<div class="result-card">
                 <div class="result-card-header">
                     <div>
-                        <div class="result-title"><a href="${escapeHtml(result.url)}" target="_blank" class="result-title-link">${escapeHtml(result.title)}</a></div>
+                        <div class="result-title"><a href="${safeHref(result.url)}" target="_blank" rel="noopener noreferrer" class="result-title-link">${escapeHtml(result.title)}</a></div>
                         <div class="result-speaker">by ${escapeHtml(result.speaker)}</div>
                     </div>
                     ${badge}
@@ -531,7 +576,12 @@ async function askQuestion() {
         const embedding = await getEmbedding(question);
 
         // Step 2: Search for similar sentences
-        const results = await searchSentences(embedding);
+        const results = await searchSentences(embedding, getSelectedSpeaker());
+
+        if (!results || results.length === 0) {
+            showResults('rag', '<div class="no-results">No matching talks found for this question and speaker filter. Try a different query or select “All speakers.”</div>');
+            return;
+        }
 
         // Step 3: Group by talk (with similarity scores and URLs)
         const topTalks = groupByTalk(results);
@@ -563,7 +613,7 @@ async function askQuestion() {
             html += `<div class="result-card result-source">
                 <div class="result-card-header">
                     <div>
-                        <div class="result-title"><a href="${escapeHtml(talk.url)}" target="_blank" class="result-title-link">${escapeHtml(talk.title)}</a></div>
+                        <div class="result-title"><a href="${safeHref(talk.url)}" target="_blank" rel="noopener noreferrer" class="result-title-link">${escapeHtml(talk.title)}</a></div>
                         <div class="result-speaker">by ${escapeHtml(talk.speaker)}</div>
                     </div>
                     ${talkBadge}
@@ -590,19 +640,21 @@ async function getEmbedding(text) {
     });
 
     if (error) {
-        throw new Error(data?.error || 'Failed to get embedding');
+        throw new Error(data?.error || error.message || 'Failed to get embedding');
     }
 
+    if (!Array.isArray(data?.embedding)) throw new Error('Embedding function returned an invalid response.');
     return data.embedding;
 }
 
 // Search sentences using vector similarity
-async function searchSentences(embedding) {
+async function searchSentences(embedding, speaker = null) {
     if (!supabaseClient) throw new Error('Supabase not configured');
 
     const { data, error } = await supabaseClient.rpc('match_sentences', {
         query_embedding: embedding,
-        match_count: 20
+        match_count: 20,
+        speaker_filter: speaker
     });
 
     if (error) throw new Error(`Database search failed: ${error.message}`);
@@ -675,8 +727,8 @@ async function fetchFullTalkText(talks) {
     return talks.map(talk => ({
         ...talk,
         text: fullTextMap[talk.talk_id]
-            ? fullTextMap[talk.talk_id].join(' ')
-            : talk.text
+            ? fullTextMap[talk.talk_id].join(' ').slice(0, 10_000)
+            : talk.text.slice(0, 10_000)
     }));
 }
 
@@ -690,9 +742,12 @@ async function generateAnswer(question, contextTalks) {
     });
 
     if (error) {
-        throw new Error(data?.error || 'Failed to generate answer');
+        throw new Error(data?.error || error.message || 'Failed to generate answer');
     }
 
+    if (typeof data?.answer !== 'string' || !data.answer.trim()) {
+        throw new Error('Answer function returned an invalid response.');
+    }
     return data.answer;
 }
 
@@ -712,8 +767,17 @@ function clearResults(type) {
 
 function escapeHtml(text) {
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = String(text ?? '');
     return div.innerHTML;
+}
+
+function safeHref(value) {
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' ? escapeHtml(url.href) : '#';
+    } catch {
+        return '#';
+    }
 }
 
 // Similarity badge with color coding

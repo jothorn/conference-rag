@@ -1,128 +1,132 @@
 """
-Step 4: Generate Embeddings
-===============================
-Reads scripts/output/sentences.json and generates OpenAI embeddings
-for each sentence. Saves the result to scripts/output/sentences_with_embeddings.json.
+Step 4: Generate and locally checkpoint text embeddings.
 
-This is the most expensive step (~$0.60 in API costs). The output is
-saved to disk so you won't lose your work if the next step fails.
-
-Usage:
-    python scripts/04_embed_data.py
-
-Input:
-    scripts/output/sentences.json  — from Step 3 (import)
-
-Output:
-    scripts/output/sentences_with_embeddings.json  — sentence records with embedding vectors
-
-Prerequisites:
-    - config.secret.json with OPENAI_API_KEY
-    - scripts/output/sentences.json from the import step
+The output is resumable by (talk_id, sentence_num), so a failed batch can be
+retried without paying again for successful records.
 """
 
 import json
 import os
 import sys
 import time
+from pathlib import Path
 
 from openai import OpenAI
 from tqdm import tqdm
 
 
-INPUT_FILE = os.path.join('scripts', 'output', 'sentences.json')
-OUTPUT_FILE = os.path.join('scripts', 'output', 'sentences_with_embeddings.json')
+ROOT = Path(__file__).resolve().parents[1]
+INPUT_FILE = ROOT / 'scripts' / 'output' / 'sentences.json'
+OUTPUT_FILE = ROOT / 'scripts' / 'output' / 'sentences_with_embeddings.json'
 BATCH_SIZE = 100
+EMBEDDING_DIMENSIONS = 1_536
 
 
-def load_secrets():
-    with open('config.secret.json', 'r') as f:
-        return json.load(f)
+def record_key(record):
+    return (record.get('talk_id'), record.get('sentence_num'))
+
+
+def save_checkpoint(records):
+    temporary_file = OUTPUT_FILE.with_suffix('.json.tmp')
+    with temporary_file.open('w', encoding='utf-8') as file:
+        json.dump(records, file, ensure_ascii=False)
+    os.replace(temporary_file, OUTPUT_FILE)
 
 
 def main():
-    if not os.path.exists(INPUT_FILE):
-        print(f"❌ {INPUT_FILE} not found. Run scripts/03_import_data.py first.")
+    if not INPUT_FILE.exists():
+        print(f'❌ {INPUT_FILE.relative_to(ROOT)} not found. Run scripts/03_import_data.py first.')
         sys.exit(1)
 
-    # Load sentences
-    with open(INPUT_FILE, 'r', encoding='utf-8') as f:
-        records = json.load(f)
+    records = json.loads(INPUT_FILE.read_text(encoding='utf-8'))
+    if not isinstance(records, list) or not records or any(not isinstance(record, dict) for record in records):
+        print('❌ Sentence input is empty or invalid.')
+        sys.exit(1)
 
-    print("=" * 60)
-    print(f"Generating Embeddings for {len(records):,} Sentences")
-    print("=" * 60)
-    print(f"   Model: text-embedding-3-small (1,536 dimensions)")
-    print(f"   Batch size: {BATCH_SIZE}\n")
+    secrets_path = ROOT / 'config.secret.json'
+    try:
+        secrets = json.loads(secrets_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as error:
+        print(f'❌ Could not read config.secret.json: {error}')
+        sys.exit(1)
+    api_key = secrets.get('OPENAI_API_KEY')
+    if not api_key or 'YOUR_' in api_key:
+        print('❌ Add your OPENAI_API_KEY to the git-ignored config.secret.json before embedding.')
+        sys.exit(1)
 
-    # Check if there's a partial result we can resume from
-    already_embedded = 0
-    if os.path.exists(OUTPUT_FILE):
-        with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
-            existing = json.load(f)
-        already_embedded = len(existing)
-        if already_embedded >= len(records):
-            print(f"✅ All {len(records):,} sentences already have embeddings in {OUTPUT_FILE}")
-            print(f"   Delete {OUTPUT_FILE} to re-generate.")
-            return
-        print(f"   ⏩ Resuming from sentence {already_embedded:,} (found partial output)")
-        records_to_embed = records[already_embedded:]
-    else:
-        existing = []
-        records_to_embed = records
+    embedded_by_key = {}
+    if OUTPUT_FILE.exists():
+        try:
+            previous = json.loads(OUTPUT_FILE.read_text(encoding='utf-8'))
+            if not isinstance(previous, list):
+                raise ValueError('Checkpoint must be a JSON list.')
+            embedded_by_key = {
+                record_key(record): record
+                for record in previous
+                if isinstance(record, dict)
+                and isinstance(record.get('embedding'), list)
+                and len(record['embedding']) == EMBEDDING_DIMENSIONS
+            }
+        except (json.JSONDecodeError, TypeError, ValueError) as error:
+            print(f'❌ Existing embedding checkpoint is invalid: {error}')
+            sys.exit(1)
 
-    # Generate embeddings
-    secrets = load_secrets()
-    client = OpenAI(api_key=secrets['OPENAI_API_KEY'])
+    pending = [record for record in records if record_key(record) not in embedded_by_key]
+    print('=' * 60)
+    print(f'Generating embeddings for {len(records):,} sentences')
+    print(f'Already complete: {len(records) - len(pending):,}; remaining: {len(pending):,}')
+    print(f'Model: text-embedding-3-small ({EMBEDDING_DIMENSIONS:,} dimensions)')
+    print('=' * 60)
 
-    embedded_records = list(existing)  # Start from any partial results
-    errors = 0
-
-    for i in tqdm(range(0, len(records_to_embed), BATCH_SIZE), desc="Embedding"):
-        batch = records_to_embed[i:i + BATCH_SIZE]
-        batch_texts = [r['text'] for r in batch]
-
+    client = OpenAI(api_key=api_key)
+    failed = 0
+    for start in tqdm(range(0, len(pending), BATCH_SIZE), desc='Embedding'):
+        batch = pending[start:start + BATCH_SIZE]
+        batch_failed = False
         try:
             response = client.embeddings.create(
                 model='text-embedding-3-small',
-                input=batch_texts
+                input=[record['text'] for record in batch],
             )
+            data = sorted(response.data, key=lambda item: item.index)
+            if len(data) != len(batch):
+                raise ValueError(f'Expected {len(batch)} vectors, received {len(data)}.')
+            for record, item in zip(batch, data):
+                if len(item.embedding) != EMBEDDING_DIMENSIONS:
+                    raise ValueError('OpenAI returned a vector with an unexpected dimension.')
+                embedded_by_key[record_key(record)] = {**record, 'embedding': item.embedding}
+        except Exception as error:
+            failed += len(batch)
+            batch_failed = True
+            print(f'\n❌ Batch beginning at sentence {start:,} failed: {error}')
 
-            for record, item in zip(batch, response.data):
-                record_with_embedding = dict(record)
-                record_with_embedding['embedding'] = item.embedding
-                embedded_records.append(record_with_embedding)
-
-        except Exception as e:
-            print(f"\n   ❌ Batch error: {e}")
-            errors += len(batch)
-
-        # Save progress every 10 batches (in case of crash)
-        if (i // BATCH_SIZE + 1) % 10 == 0:
-            with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-                json.dump(embedded_records, f, ensure_ascii=False)
-
+        if batch_failed or (start // BATCH_SIZE + 1) % 10 == 0:
+            save_checkpoint([
+                embedded_by_key[key]
+                for key in (record_key(record) for record in records)
+                if key in embedded_by_key
+            ])
         time.sleep(0.1)
 
-    # Final save
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(embedded_records, f, ensure_ascii=False)
+    completed_records = [
+        embedded_by_key[record_key(record)]
+        for record in records
+        if record_key(record) in embedded_by_key
+    ]
+    save_checkpoint(completed_records)
 
-    file_size_mb = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
-    print(f"\n✅ Embedding complete!")
-    print(f"   Embedded: {len(embedded_records):,} sentences")
-    if errors:
-        print(f"   Errors:   {errors:,}")
+    missing = len(records) - len(completed_records)
+    print(f'\nSaved {len(completed_records):,} vectors to {OUTPUT_FILE.relative_to(ROOT)}.')
+    if failed or missing:
+        print(f'⚠️ {missing:,} vectors remain. Run this script again to retry the missing records.')
+        sys.exit(1)
 
-    # Estimate cost
-    total_chars = sum(len(r['text']) for r in embedded_records)
-    est_tokens = total_chars / 4  # rough estimate
-    cost = (est_tokens / 1_000_000) * 0.020
-    print(f"   💰 Estimated cost: ${cost:.4f}")
-
-    print(f"\n💾 Saved to {OUTPUT_FILE} ({file_size_mb:.1f} MB)")
-    print(f"   This file is your safety net — embeddings are preserved on disk.")
-    print(f"\nNext: python scripts/05_update_embeddings.py")
+    total_chars = sum(len(record['text']) for record in records)
+    estimated_tokens = total_chars / 4
+    estimated_cost = estimated_tokens / 1_000_000 * 0.020
+    print(f'✅ All {len(completed_records):,} sentences embedded.')
+    print(f'   Rough embedding cost estimate: ${estimated_cost:.4f}')
+    print('Next: python scripts/05_update_embeddings.py')
 
 
 if __name__ == '__main__':

@@ -7,102 +7,76 @@
 ```
 
 ## What You'll Learn
-- What RAG (Retrieval Augmented Generation) is
-- How to combine retrieval + generation for AI-powered answers
-- How context windows work in LLMs
-- How to build a second Edge Function
 
-## Why This Matters
+- How retrieval-augmented generation combines database search and an LLM
+- Why retrieved sources help ground answers
+- How to bound context sent to a model
 
-This is the culmination of everything you've built. Keyword search finds exact words. Semantic search finds similar meanings. RAG goes further — it **reads** the most relevant talks and **generates** a natural-language answer with citations. This is how modern AI assistants (ChatGPT, Perplexity, etc.) work under the hood.
+## Why this matters
 
-## What to Do
+Keyword search finds matching wording. Semantic search finds related meaning.
+RAG retrieves likely relevant passages, gives them to a model with the
+question, then shows the generated answer alongside links to its source talks.
+The model can still be wrong; citations help readers check the evidence.
 
-### 1. Create the generate-answer Edge Function
+## Deploy `generate-answer`
 
-You need one more Edge Function: `generate-answer`. Ask your AI assistant to help:
+The function source is included at
+`supabase/functions/generate-answer/`. It validates the signed-in user's JWT,
+accepts up to three bounded source talks, and calls GPT-4o using the
+server-side OpenAI key. Its prompt treats talk text as quoted data and asks the
+model to cite the exact talk title and speaker.
 
-> 🤖 **Tell your AI assistant**: *"I need to create a Supabase Edge Function called `generate-answer`. It should:*
-> - *Accept a POST request with `{ "question": "...", "context_talks": [...] }` in the body*
-> - *Each context talk has `{ title, speaker, text }`*
-> - *Use GPT-4o to generate an answer based on the provided conference talk context*
-> - *The prompt should instruct GPT to cite which talks it draws from*
-> - *Return `{ "answer": "..." }` in the response*
-> - *Handle CORS and verify authentication (same pattern as embed-question)"*
-
-The function lives at: `supabase/functions/generate-answer/index.ts`
-
-> 💡 **Need a reference?** See [github.com/michaeltreynolds/cragger/tree/main/supabase/functions](https://github.com/michaeltreynolds/cragger/tree/main/supabase/functions)
-
-### What's Happening Behind the Scenes
-
-When you ask a question, the full RAG pipeline executes:
-
-```
-Your Question: "How can I find peace during hard times?"
-    ↓
-1. embed-question Edge Function
-    → Sends question to OpenAI
-    → Returns 1,536-dimensional embedding
-    ↓
-2. Vector Search (match_sentences)
-    → pgvector finds 20 most similar sentences
-    → Groups by talk_id, ranks by relevance
-    → Returns top 3 talks
-    ↓
-3. Fetch full talk text
-    → Retrieves all sentences for the top 3 talks
-    → Reconstructs complete talk context
-    ↓
-4. generate-answer Edge Function
-    → Sends question + full talk context to GPT-4o
-    → Returns a natural language answer with citations
-    ↓
-5. Display in UI ✨
-```
-
-> 💡 **Ask your AI assistant**: *"What is RAG and why is it better than fine-tuning for this use case?"*
-
-### 2. Deploy the Function
+If you completed Step 5, the CLI is already linked and the OpenAI key and
+allowed origins are set as Supabase secrets. Deploy the function:
 
 ```bash
-supabase functions deploy generate-answer --no-verify-jwt
+supabase functions deploy generate-answer
 ```
 
-> ⚠️ **Same auth pattern as before**: Deploy with `--no-verify-jwt` and handle auth manually inside the function.
+## What's happening behind the scenes
 
-### 3. All Three Lights Green! 🟢🟢🟢
+```text
+Question from the browser
+    ↓
+embed-question Edge Function
+    → OpenAI returns a 1,536-dimensional question vector
+    ↓
+match_sentences(query_embedding, speaker_filter)
+    → pgvector ranks similar sentences; optional speaker filter applies here
+    ↓
+Group by talk, then fetch full text for the top three talks
+    ↓
+generate-answer Edge Function
+    → GPT-4o receives bounded text and returns an answer with citations
+    ↓
+Answer and source links appear in the browser
+```
 
-After deploying:
+## Try it
 
-1. **Refresh your site** (hard refresh: Ctrl+Shift+R)
-2. All three panels should show **🟢 Ready**!
+1. Refresh the site and sign in.
+2. Confirm all three panels are green.
+3. Ask, “What have church leaders taught about prayer?”
+4. Choose a speaker and ask again; every mode should stay within that speaker's talks.
 
-Try asking: *"What have church leaders taught about prayer?"*
-
-You should get an AI-generated answer with source citations!
-
-### Troubleshooting
+## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| Search shows "Not Ready" | Make sure you completed the relevant step (data import, edge function deployment) |
-| "Failed to get embedding" | Check Edge Function deployment and that OPENAI_API_KEY secret is set |
-| No search results | Verify data was imported (check row count in Supabase Dashboard) |
-| Login doesn't work | Check redirect URL in Supabase Auth settings |
-| Changes don't appear | Hard refresh (Ctrl+Shift+R) or try incognito window |
+| Search shows “Not Ready” | Check data import, embeddings, and Edge Function deployment for that mode. |
+| “Failed to get embedding” | Confirm `OPENAI_API_KEY` is set as a Supabase secret and `embed-question` is deployed. |
+| No search results | Check the row count or clear the speaker filter. |
+| Login does not work | Add your GitHub Pages URL to Supabase Auth redirect URLs. |
+| Changes do not appear | Hard refresh or open the page in a private window. |
 
 ## Verification
 
-- [ ] `generate-answer` function deployed without errors
-- [ ] All three search panels show **🟢 Ready**
-- [ ] Keyword search returns relevant results
-- [ ] Semantic search returns results even for non-exact-match queries
-- [ ] RAG returns an AI-generated answer with talk citations
-- [ ] 📸 **Take a screenshot** of a working RAG query — you'll need this for submission!
-
-## 🎉 Milestone: All lights green! Your RAG app is complete!
-
-> 💾 **Commit your work!** `git add -A && git commit -m "All search modes working" && git push`
+- [ ] `generate-answer` is deployed
+- [ ] All search modes turn green after sign-in
+- [ ] Keyword and semantic search return talks
+- [ ] RAG returns an answer and source links
+- [ ] Speaker filter applies to all three modes
+- [ ] Save a screenshot of a working RAG question for the submission
 
 ## → Next: [Step 07: Make It Yours](07_make_it_yours.md)

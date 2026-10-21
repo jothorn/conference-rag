@@ -54,7 +54,7 @@ You have two configuration files with different purposes:
 
 | File | Contains | Safe to Commit? |
 |------|---------|:-:|
-| `config.public.json` | Supabase URL + anon key | ✅ Yes — protected by RLS |
+| `config.public.json` | Supabase URL + publishable key | ✅ Yes — protected by RLS |
 | `config.secret.json` | API keys, service keys | ❌ Never — git-ignored |
 
 Create your secret config from the template:
@@ -67,7 +67,7 @@ cp config.secret.example.json config.secret.json
 
 > ⚠️ **`config.secret.json` is in `.gitignore`** — it will never be committed to your repo. This is how we keep API keys safe!
 
-> 💡 **Ask your AI assistant**: *"Why is the Supabase anon key safe to expose publicly, but the service key is not?"*
+> 💡 **Ask your AI assistant**: *"Why is the Supabase publishable key safe to expose publicly, but the service key is not?"*
 
 ### 5. Enable GitHub Pages
 
