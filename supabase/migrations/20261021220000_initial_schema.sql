@@ -1,9 +1,13 @@
 -- Conference RAG schema: authenticated talk search and a public page-view counter.
+
+-- Search requires pgvector for embeddings and pg_trgm for keyword matching.
 create schema if not exists extensions;
 create extension if not exists vector with schema extensions;
 create extension if not exists pg_trgm with schema extensions;
 grant usage on schema extensions to anon, authenticated;
 
+-- One row per sentence keeps keyword search and vector search on the same data.
+-- talk_id groups sentences back into a talk; sentence_num preserves their order.
 create table if not exists public.sentence_embeddings (
   id uuid primary key default gen_random_uuid(),
   talk_id uuid not null,
@@ -20,6 +24,8 @@ create table if not exists public.sentence_embeddings (
   constraint sentence_embeddings_talk_sentence_unique unique (talk_id, sentence_num)
 );
 
+-- These indexes support talk reconstruction, speaker filtering, keyword search,
+-- and nearest-neighbor search respectively.
 create index if not exists sentence_embeddings_talk_id_idx
   on public.sentence_embeddings (talk_id);
 create index if not exists sentence_embeddings_speaker_idx
@@ -29,6 +35,7 @@ create index if not exists sentence_embeddings_text_trgm_idx
 create index if not exists sentence_embeddings_embedding_hnsw_idx
   on public.sentence_embeddings using hnsw (embedding extensions.vector_cosine_ops);
 
+-- Browsers may read talk text only after login. Writes use the server-side service key.
 alter table public.sentence_embeddings enable row level security;
 revoke all on public.sentence_embeddings from public, anon, authenticated;
 grant select on public.sentence_embeddings to anon, authenticated;
@@ -36,6 +43,7 @@ drop policy if exists "Allow authenticated users to read" on public.sentence_emb
 create policy "Allow authenticated users to read"
   on public.sentence_embeddings for select to authenticated using (true);
 
+-- This small table is intentionally public so the demo can count page visits.
 create table if not exists public.page_views (
   id uuid primary key default gen_random_uuid(),
   visited_at timestamptz not null default now(),
@@ -55,6 +63,7 @@ create policy "Allow public reads"
 
 drop function if exists public.match_sentences(extensions.vector, integer);
 drop function if exists public.match_sentences(extensions.vector, integer, text);
+-- Return the nearest sentences to a question vector, with an optional speaker filter.
 create function public.match_sentences(
   query_embedding extensions.vector(1536),
   match_count integer default 20,
@@ -82,6 +91,7 @@ as $$
     se.speaker,
     se.url,
     se.text,
+    -- <=> is cosine distance; subtracting from 1 makes higher similarity better.
     1 - (se.embedding <=> query_embedding) as similarity
   from public.sentence_embeddings as se
   where se.embedding is not null
