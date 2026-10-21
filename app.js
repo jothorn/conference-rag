@@ -348,6 +348,7 @@ async function checkSearchReadiness() {
         let semanticReady = false;
         if (hasEmbeddings) {
             try {
+                // This health check verifies the deployed function and its secret without calling OpenAI.
                 const { data, error: fnError } = await supabaseClient.functions.invoke('embed-question', {
                     body: { health_check: true }
                 });
@@ -363,6 +364,7 @@ async function checkSearchReadiness() {
             setSearchReady('rag', false);
         } else {
             try {
+                // Only check availability here; a real answer request happens when the user asks a question.
                 const { data, error: fnError } = await supabaseClient.functions.invoke('generate-answer', {
                     body: { health_check: true }
                 });
@@ -381,6 +383,7 @@ async function checkSearchReadiness() {
     }
 }
 
+/** Load the shared speaker list once; all three search modes use this dropdown. */
 async function loadSpeakerOptions() {
     if (!supabaseClient || !speakerFilter || speakerOptionsLoaded) return;
 
@@ -647,7 +650,7 @@ async function getEmbedding(text) {
     return data.embedding;
 }
 
-// Search sentences using vector similarity
+// Search sentences by vector similarity, optionally keeping only one speaker.
 async function searchSentences(embedding, speaker = null) {
     if (!supabaseClient) throw new Error('Supabase not configured');
 
@@ -697,8 +700,7 @@ function groupByTalk(sentences) {
         }));
 }
 
-// Fetch full talk text by querying all sentences for given talk_ids, ordered by sentence_num.
-// Uses a single batched query via .in() for all talk_ids — no parallel calls needed.
+// Fetch full talk text by querying all sentences for the selected talks in one request.
 async function fetchFullTalkText(talks) {
     if (!supabaseClient || !talks.length) return talks;
 
@@ -723,7 +725,7 @@ async function fetchFullTalkText(talks) {
         fullTextMap[row.talk_id].push(row.text);
     }
 
-    // Replace snippet text with full talk text
+    // Three talks × 10,000 characters stays within the Edge Function's 30,000-character limit.
     return talks.map(talk => ({
         ...talk,
         text: fullTextMap[talk.talk_id]
@@ -772,6 +774,7 @@ function escapeHtml(text) {
 }
 
 function safeHref(value) {
+    // Talk URLs come from scraped content, so allow HTTPS links only (HTML escaping alone is insufficient).
     try {
         const url = new URL(value);
         return url.protocol === 'https:' ? escapeHtml(url.href) : '#';
