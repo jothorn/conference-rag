@@ -7,11 +7,13 @@ const MAX_TALKS = 3;
 const MAX_CONTEXT_LENGTH = 30_000;
 
 Deno.serve(async (request: Request) => {
+  // Handle browser preflight and reject unsupported methods before parsing a body.
   if (request.method === 'OPTIONS') return jsonResponse(request, {});
   if (request.method !== 'POST') {
     return jsonResponse(request, { error: 'Use POST for this endpoint.' }, 405);
   }
 
+  // Only signed-in users can spend the project's OpenAI budget.
   const userId = await authenticatedUserId(request);
   if (!userId) return jsonResponse(request, { error: 'Sign in to ask a question.' }, 401);
 
@@ -27,6 +29,7 @@ Deno.serve(async (request: Request) => {
     return jsonResponse(request, { error: 'Request body must be valid JSON.' }, 400);
   }
 
+  // The readiness check returns before building a prompt or calling OpenAI.
   if (body.health_check === true) return jsonResponse(request, { healthy: true });
   const question = typeof body.question === 'string' ? body.question.trim() : '';
   if (!question || question.length > MAX_QUESTION_LENGTH) {
@@ -36,6 +39,7 @@ Deno.serve(async (request: Request) => {
     return jsonResponse(request, { error: `Provide between 1 and ${MAX_TALKS} source talks.` }, 400);
   }
 
+  // Normalize client-supplied sources and cap fields before placing them in the prompt.
   const talks = (body.context_talks as ContextTalk[]).map((talk) => ({
     title: typeof talk.title === 'string' ? talk.title.slice(0, 300) : 'Untitled talk',
     speaker: typeof talk.speaker === 'string' ? talk.speaker.slice(0, 200) : 'Unknown speaker',
@@ -48,6 +52,7 @@ Deno.serve(async (request: Request) => {
     return jsonResponse(request, { error: 'Source text is missing or exceeds the context limit.' }, 400);
   }
 
+  // Label sources so the model can cite the exact talk title and speaker.
   const sourceContext = talks.map((talk, index) =>
     `SOURCE ${index + 1}\nTitle: ${talk.title}\nSpeaker: ${talk.speaker}\nYear: ${talk.year ?? 'Unknown'}\nURL: ${talk.url}\nText:\n${talk.text}`
   ).join('\n\n');
