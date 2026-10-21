@@ -4,11 +4,13 @@ import { jsonResponse } from '../_shared/cors.ts';
 const MAX_QUESTION_LENGTH = 2_000;
 
 Deno.serve(async (request: Request) => {
+  // Browser preflight requests do not contain a question or require a session.
   if (request.method === 'OPTIONS') return jsonResponse(request, {});
   if (request.method !== 'POST') {
     return jsonResponse(request, { error: 'Use POST for this endpoint.' }, 405);
   }
 
+  // Require a real Supabase user before allowing access to the OpenAI-backed endpoint.
   const userId = await authenticatedUserId(request);
   if (!userId) return jsonResponse(request, { error: 'Sign in to use semantic search.' }, 401);
 
@@ -24,6 +26,7 @@ Deno.serve(async (request: Request) => {
     return jsonResponse(request, { error: 'Request body must be valid JSON.' }, 400);
   }
 
+  // Readiness checks stop here, so they verify setup without using OpenAI tokens.
   if (body.health_check === true) return jsonResponse(request, { healthy: true });
   const question = typeof body.question === 'string' ? body.question.trim() : '';
   if (!question || question.length > MAX_QUESTION_LENGTH) {
