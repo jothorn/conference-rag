@@ -5,6 +5,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 export function corsHeaders(request: Request): Record<string, string> {
+  // ALLOWED_ORIGINS can override these defaults for another local or hosted frontend.
   const configured = Deno.env.get('ALLOWED_ORIGINS');
   const allowedOrigins = configured
     ? configured.split(',').map((origin) => origin.trim()).filter(Boolean)
