@@ -40,7 +40,7 @@ Your app has three search modes that **light up** as you complete each milestone
        │         ↓ Grouped by talk, ranked
        │
        └─── Edge Function: generate-answer
-                ↓ GPT-4o (server-side 🔒)
+                ↓ GPT-6 Luna (server-side 🔒)
                 ↓ Returns final answer
 ```
 
