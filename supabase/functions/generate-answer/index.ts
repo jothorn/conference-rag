@@ -65,9 +65,10 @@ Deno.serve(async (request: Request) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-6-luna',
+        reasoning_effort: 'none',
         temperature: 0.2,
-        max_tokens: 900,
+        max_completion_tokens: 900,
         messages: [
           {
             role: 'system',
