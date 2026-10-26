@@ -23,7 +23,7 @@ The model can still be wrong; citations help readers check the evidence.
 
 The function source is included at
 `supabase/functions/generate-answer/`. It validates the signed-in user's JWT,
-accepts up to three bounded source talks, and calls GPT-4o using the
+accepts up to three bounded source talks, and calls GPT-6 Luna using the
 server-side OpenAI key. Its prompt treats talk text as quoted data and asks the
 model to cite the exact talk title and speaker.
 
@@ -48,7 +48,7 @@ match_sentences(query_embedding, speaker_filter)
 Group by talk, then fetch full text for the top three talks
     ↓
 generate-answer Edge Function
-    → GPT-4o receives bounded text and returns an answer with citations
+    → GPT-6 Luna receives bounded text and returns an answer with citations
     ↓
 Answer and source links appear in the browser
 ```
