@@ -62,7 +62,7 @@ Your AI assistant will automatically read [`ai_agent_instructions.md`](ai_agent_
        │         ↓ Returns similar sentences
        │
        └─── Edge Function: generate-answer
-                ↓ GPT-4o (server-side 🔒)
+                ↓ GPT-6 Luna (server-side 🔒)
                 ↓ Returns final answer
 ```
 
