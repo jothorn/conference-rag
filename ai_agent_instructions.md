@@ -43,7 +43,7 @@ Browser (GitHub Pages)
   → Supabase Auth (magic link login)
   → Edge Function: embed-question (OpenAI API)
   → Supabase Database (pgvector similarity search)
-  → Edge Function: generate-answer (GPT-4o)
+  → Edge Function: generate-answer (GPT-6 Luna)
   → Display answer with source citations
 ```
 
@@ -153,7 +153,7 @@ In Steps 05-06, students are asked to **create their own Edge Functions** with h
 
 **`generate-answer`** (Step 06):
 - POST endpoint accepting `{ "question": "...", "context_talks": [{ title, speaker, text }] }`
-- Calls GPT-4o with the question + context talks as a prompt
+- Calls GPT-6 Luna with the question + context talks as a prompt
 - Instructs GPT to cite which talks it draws from
 - Returns `{ "answer": "..." }`
 
